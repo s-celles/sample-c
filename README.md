@@ -6,6 +6,7 @@ C Sample for various isolation methods (containers, VMs).
 
 This project demonstrates how to set up a C development environment using different isolation methods:
 - **Dev Containers** (Docker) - lightweight containerized development
+- **DevPod** - open-source dev environments on any backend (Docker, Kubernetes, SSH, cloud)
 - **Vagrant** (VirtualBox VM) - full virtual machine isolation
 
 ### Isolation Levels
@@ -13,6 +14,7 @@ This project demonstrates how to set up a C development environment using differ
 | Environment | Isolation Level | Details |
 |-------------|-----------------|---------|
 | **DevContainer** | Medium | Runs in a Docker container, shares the host kernel, file system is isolated but mounts your project folder |
+| **DevPod** | Medium-High | Uses Dev Container spec, but can run on remote backends (Kubernetes, cloud VMs) for higher isolation |
 | **Vagrant/VirtualBox** | High | Full VM with its own kernel, hardware virtualization, stronger isolation from the host |
 
 > **Note:** Both setups mount/sync your project directory into the guest environment for convenience. For true isolation (e.g., running untrusted code), you would need to remove the volume mount / synced folder and copy files instead.
@@ -22,6 +24,10 @@ This project demonstrates how to set up a C development environment using differ
 ### For Dev Containers
 - [Docker](https://www.docker.com/get-started) installed and running
 - [VS Code](https://code.visualstudio.com/) with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+
+### For DevPod
+- [DevPod](https://devpod.sh/) installed ([installation guide](https://devpod.sh/docs/getting-started/install))
+- A provider configured (Docker, Kubernetes, SSH, or cloud provider)
 
 ### For Vagrant
 - [VirtualBox](https://www.virtualbox.org/)
@@ -47,7 +53,7 @@ This project demonstrates how to set up a C development environment using differ
 Clone the repository and open it in VS Code:
 
 ```sh
-git clone https://github.com/s-celles/sample-c-devcontainer-vagrant.git
+git clone https://github.com/s-celles/sample-c.git
 cd sample-c-devcontainer-vagrant
 code .
 ```
@@ -223,6 +229,199 @@ flowchart TD
 | `docker system prune` | Remove unused containers, networks, images |
 | `docker logs <container>` | View container logs |
 
+### DevPod
+
+[DevPod](https://devpod.sh/) is an open-source tool that uses the Dev Container specification but allows running workspaces on any backend (Docker, Kubernetes, SSH remote machines, or cloud providers).
+
+#### Using the DevPod CLI
+
+1. Create and start a workspace from this repository:
+```sh
+devpod up https://github.com/s-celles/sample-c
+```
+
+Or from a local directory:
+```sh
+devpod up .
+```
+
+2. Connect to the workspace via SSH:
+```sh
+devpod ssh sample-c-devcontainer-vagrant
+```
+
+3. Open in VS Code:
+```sh
+devpod up . --ide vscode
+```
+
+#### Using the DevPod Desktop App
+
+1. Open DevPod Desktop
+2. Click "Create Workspace"
+3. Enter the repository URL or select a local folder
+4. Choose your provider (Docker, Kubernetes, etc.)
+5. Click "Create"
+
+#### DevPod Commands Reference
+
+| Command | Description |
+|---------|-------------|
+| `devpod up <source>` | Create and start a workspace |
+| `devpod ssh <workspace>` | SSH into a workspace |
+| `devpod stop <workspace>` | Stop a workspace |
+| `devpod delete <workspace>` | Delete a workspace |
+| `devpod list` | List all workspaces |
+| `devpod provider list` | List configured providers |
+| `devpod provider add <provider>` | Add a new provider |
+
+#### DevPod Features
+
+- **Uses existing Dev Container config:** No additional configuration needed
+- **Multiple backends:** Run on Docker, Kubernetes, SSH, AWS, GCP, Azure, etc.
+- **IDE integration:** Works with VS Code, JetBrains IDEs, and terminal
+- **Prebuild support:** Speed up workspace creation with prebuilds
+- **Open source:** Self-hosted, no vendor lock-in
+
+#### Workspace Lifecycle
+
+The following diagram shows all possible workspace states and how to transition between them:
+
+```mermaid
+stateDiagram-v2
+    [*] --> NotCreated: devpod init / first use
+
+    NotCreated --> Running: devpod up
+    Running --> Stopped: devpod stop
+    Running --> NotCreated: devpod delete
+    Running --> Running: devpod up (rebuild)
+
+    Stopped --> Running: devpod up
+    Stopped --> NotCreated: devpod delete
+
+    note right of NotCreated
+        No workspace exists
+        .devcontainer/ config present
+    end note
+
+    note right of Running
+        Workspace active
+        Can SSH or use IDE
+    end note
+
+    note right of Stopped
+        Workspace exists
+        but not running
+    end note
+```
+
+#### DevPod Up Sequence
+
+What happens when you run `devpod up`:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant DevPod as DevPod CLI
+    participant Provider as Provider (Docker/K8s/SSH)
+    participant Workspace
+
+    User->>DevPod: devpod up <source>
+    DevPod->>DevPod: Parse devcontainer.json
+
+    alt Provider not configured
+        DevPod-->>User: Prompt to add provider
+        User->>DevPod: devpod provider add docker
+    end
+
+    DevPod->>Provider: Check for existing workspace
+    alt Workspace not created
+        DevPod->>Provider: Create workspace environment
+        Provider->>Workspace: Build from Dockerfile
+        Workspace-->>Provider: Image ready
+        Provider-->>DevPod: Workspace created
+    end
+
+    DevPod->>Provider: Start workspace
+    Provider->>Workspace: Start container/VM
+    Workspace-->>Provider: Running
+
+    DevPod->>Workspace: Clone/sync source code
+    Workspace-->>DevPod: Source ready
+
+    alt postCreateCommand defined
+        DevPod->>Workspace: Run postCreateCommand
+        Workspace->>Workspace: cmake -B build && cmake --build build
+        Workspace-->>DevPod: Build complete
+    end
+
+    alt IDE specified
+        DevPod->>Workspace: Connect IDE (VS Code/JetBrains)
+        Workspace-->>DevPod: IDE connected
+    end
+
+    DevPod-->>User: Workspace ready
+```
+
+#### Development Workflow
+
+Decision tree for common DevPod operations:
+
+```mermaid
+flowchart TD
+    A[Start] --> B{Provider configured?}
+    B -->|No| C[devpod provider add docker]
+    C --> D{Workspace exists?}
+    B -->|Yes| D
+
+    D -->|No| E[devpod up source]
+    D -->|Yes| F{Workspace running?}
+
+    F -->|No| G[devpod up workspace]
+    F -->|Yes| H{How to connect?}
+
+    E --> H
+    G --> H
+
+    H -->|Terminal| I[devpod ssh workspace]
+    H -->|VS Code| J[devpod up --ide vscode]
+    H -->|JetBrains| K[devpod up --ide intellij]
+
+    I --> L[Work in workspace]
+    J --> L
+    K --> L
+
+    L --> M{Done for now?}
+
+    M -->|Pause| N[devpod stop workspace]
+    M -->|Clean up| O[devpod delete workspace]
+    M -->|Keep working| L
+
+    N --> P[Resume later with devpod up]
+    O --> Q[Start fresh]
+    Q --> E
+```
+
+#### Troubleshooting
+
+**Workspace fails to start**
+
+Check provider status:
+```sh
+devpod provider list
+```
+
+Delete and recreate the workspace:
+```sh
+devpod delete <workspace> && devpod up <source>
+```
+
+**Cannot connect to workspace**
+
+```sh
+devpod ssh <workspace> --debug
+```
+
 ### Vagrant (VirtualBox VM)
 
 1. Start the virtual machine:
@@ -392,6 +591,26 @@ flowchart TD
     Q --> T[Start fresh]
 
     T --> F
+```
+
+#### Troubleshooting
+
+**Compilers not found (cmake fails with "CMAKE_C_COMPILER is not a full path")**
+
+If provisioning didn't complete on first `vagrant up`, re-run it:
+```sh
+vagrant provision
+```
+
+Or start completely fresh:
+```sh
+vagrant destroy -f && vagrant up
+```
+
+**VM not responding or in a bad state**
+
+```sh
+vagrant reload --provision
 ```
 
 #### Vagrant Features
