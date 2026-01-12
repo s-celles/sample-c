@@ -54,7 +54,7 @@ Clone the repository and open it in VS Code:
 
 ```sh
 git clone https://github.com/s-celles/sample-c.git
-cd sample-c-devcontainer-vagrant
+cd sample-c
 code .
 ```
 
@@ -247,7 +247,7 @@ devpod up .
 
 2. Connect to the workspace via SSH:
 ```sh
-devpod ssh sample-c-devcontainer-vagrant
+devpod ssh sample-c
 ```
 
 3. Open in VS Code:
