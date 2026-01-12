@@ -101,10 +101,10 @@ stateDiagram-v2
 
     Running --> Stopped: Close VS Code / Stop Container
     Running --> Running: Rebuild Container
-    Running --> NoContainer: Dev Containers: Clean Up
+    Running --> NoContainer: Dev Containers Clean Up
 
     Stopped --> Running: Reopen in Container
-    Stopped --> NoContainer: Dev Containers: Clean Up
+    Stopped --> NoContainer: Dev Containers Clean Up
 
     note right of NoContainer
         No container exists
