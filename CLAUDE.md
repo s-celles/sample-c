@@ -1,0 +1,1 @@
+- Follow stricly instructions in AGENTS.md

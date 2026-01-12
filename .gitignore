@@ -62,4 +62,30 @@ CTestTestfile.cmake
 DartConfiguration.tcl
 Makefile
 
+# AI generated files
+.ai/
+.gpt/
+.chat/
+.bard/
+.copilot/
+.synth/
+.perplexity/
+.jasper/
+.gemini/
+.bardai/
+.mistral/
+.claude/
+.anthropic/
+#CLAUDE.md  # Uncomment if you want to ignore this specific file
+# End of AI generated files
+
+# IDE files
+#.vscode/  # Uncomment if you want to ignore VSCode settings
+#.idea/
+#*.code-workspace
+
+# Binary files
 HelloWorld
+
+# Vagrant
+.vagrant/
