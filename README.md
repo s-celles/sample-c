@@ -1,6 +1,6 @@
 # sample-c
 
-C Sample for various isolation methods (container, VM).
+C Sample for various isolation methods (containers, VMs).
 
 ## Overview
 
@@ -87,6 +87,142 @@ Or just press the *Run Code* button found in the top right of the editor panel.
 - **Installed tools:** gcc, g++, cmake, git, curl
 - **VS Code extensions:** C/C++ Extension Pack, CMake Tools
 
+#### Container Lifecycle
+
+The following diagram shows all possible container states and how to transition between them:
+
+```mermaid
+stateDiagram-v2
+    [*] --> NoContainer: Project opened
+
+    NoContainer --> Building: Reopen in Container
+    Building --> Running: Build successful
+    Building --> NoContainer: Build failed
+
+    Running --> Stopped: Close VS Code / Stop Container
+    Running --> Running: Rebuild Container
+    Running --> NoContainer: Dev Containers: Clean Up
+
+    Stopped --> Running: Reopen in Container
+    Stopped --> NoContainer: Dev Containers: Clean Up
+
+    note right of NoContainer
+        No container exists
+        .devcontainer/ config present
+    end note
+
+    note right of Building
+        Docker builds image
+        from Dockerfile
+    end note
+
+    note right of Running
+        Container active
+        VS Code connected
+    end note
+
+    note right of Stopped
+        Container exists
+        but not running
+    end note
+```
+
+#### Dev Container Startup Sequence
+
+What happens when you select "Reopen in Container":
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant VSCode as VS Code
+    participant Extension as Dev Containers Extension
+    participant Docker
+    participant Container
+
+    User->>VSCode: Open project folder
+    VSCode->>Extension: Detect .devcontainer/
+    Extension-->>User: Prompt "Reopen in Container"
+
+    User->>Extension: Click "Reopen in Container"
+    Extension->>Extension: Parse devcontainer.json
+
+    Extension->>Docker: Check for existing image
+    alt Image not built or outdated
+        Extension->>Docker: Build image from Dockerfile
+        Docker->>Docker: Pull base image (ubuntu:24.04)
+        Docker->>Docker: Run apt-get install commands
+        Docker-->>Extension: Image built
+    end
+
+    Extension->>Docker: Create container
+    Docker->>Container: Start container
+    Docker->>Container: Mount workspace folder
+    Container-->>Docker: Container running
+    Docker-->>Extension: Container ready
+
+    Extension->>Container: Install VS Code Server
+    Container-->>Extension: Server running
+
+    Extension->>Container: Install extensions (C/C++, CMake)
+    Container-->>Extension: Extensions ready
+
+    alt postCreateCommand defined
+        Extension->>Container: Run postCreateCommand
+        Container->>Container: cmake -B build && cmake --build build
+        Container-->>Extension: Build complete
+    end
+
+    Extension-->>VSCode: Connect to container
+    VSCode-->>User: Ready to develop
+```
+
+#### Dev Container Development Workflow
+
+Decision tree for common Dev Container operations:
+
+```mermaid
+flowchart TD
+    A[Open Project in VS Code] --> B{.devcontainer/ exists?}
+    B -->|No| C[Create .devcontainer/]
+    C --> D[Add devcontainer.json]
+    D --> E[Add Dockerfile]
+    B -->|Yes| F{Container running?}
+
+    F -->|No| G[Reopen in Container]
+    F -->|Yes| H[Work in Container]
+
+    G --> I{Build successful?}
+    I -->|Yes| H
+    I -->|No| J[Check Dockerfile / logs]
+    J --> K[Fix configuration]
+    K --> G
+
+    H --> L{Need config change?}
+
+    L -->|Yes| M[Edit devcontainer.json / Dockerfile]
+    M --> N[Rebuild Container]
+    N --> H
+
+    L -->|No| O{Done for now?}
+
+    O -->|Switch to local| P[Reopen Folder Locally]
+    O -->|Clean up| Q[Dev Containers: Clean Up]
+    O -->|Keep working| H
+
+    P --> R[Container stops]
+    Q --> S[Container removed]
+```
+
+#### Docker Commands Reference
+
+| Command | Description |
+|---------|-------------|
+| `docker ps` | List running containers |
+| `docker ps -a` | List all containers (including stopped) |
+| `docker images` | List Docker images |
+| `docker system prune` | Remove unused containers, networks, images |
+| `docker logs <container>` | View container logs |
+
 ### Vagrant (VirtualBox VM)
 
 1. Start the virtual machine:
@@ -126,6 +262,137 @@ cmake --build build
 | `vagrant destroy` | Delete the VM |
 | `vagrant reload` | Restart the VM |
 | `vagrant provision` | Re-run provisioning scripts |
+
+#### VM Lifecycle
+
+The following diagram shows all possible VM states and the commands to transition between them:
+
+```mermaid
+stateDiagram-v2
+    [*] --> NotCreated: vagrant init
+
+    NotCreated --> Running: vagrant up
+    Running --> Suspended: vagrant suspend
+    Running --> PowerOff: vagrant halt
+    Running --> NotCreated: vagrant destroy
+
+    Suspended --> Running: vagrant resume
+    Suspended --> NotCreated: vagrant destroy
+
+    PowerOff --> Running: vagrant up
+    PowerOff --> NotCreated: vagrant destroy
+
+    Running --> Running: vagrant reload
+    Running --> Running: vagrant provision
+
+    note right of NotCreated
+        No VM exists yet
+        Only Vagrantfile present
+    end note
+
+    note right of Running
+        VM is active
+        Can SSH, run commands
+    end note
+
+    note right of Suspended
+        RAM saved to disk
+        Fast resume
+    end note
+
+    note right of PowerOff
+        Clean shutdown
+        Disk preserved
+    end note
+```
+
+#### Vagrant Up Sequence
+
+What happens when you run `vagrant up`:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Vagrant
+    participant VirtualBox
+    participant VM
+    participant Provisioner
+
+    User->>Vagrant: vagrant up
+    Vagrant->>Vagrant: Parse Vagrantfile
+
+    alt Box not downloaded
+        Vagrant->>Vagrant: Download box image
+    end
+
+    Vagrant->>VirtualBox: Create VM (name, memory, cpus)
+    VirtualBox-->>Vagrant: VM created
+
+    Vagrant->>VirtualBox: Configure synced folders
+    Vagrant->>VirtualBox: Configure network
+
+    Vagrant->>VirtualBox: Start VM
+    VirtualBox->>VM: Boot OS
+    VM-->>VirtualBox: OS running
+    VirtualBox-->>Vagrant: VM started
+
+    Vagrant->>VM: Wait for SSH ready
+    VM-->>Vagrant: SSH available
+
+    Vagrant->>VM: Mount synced folders
+    VM-->>Vagrant: Folders mounted
+
+    alt First boot or --provision flag
+        Vagrant->>Provisioner: Run shell provisioner
+        Provisioner->>VM: apt-get update && install packages
+        VM-->>Provisioner: Packages installed
+        Provisioner->>VM: cmake build commands
+        VM-->>Provisioner: Build complete
+        Provisioner-->>Vagrant: Provisioning done
+    end
+
+    Vagrant-->>User: Machine ready
+```
+
+#### Development Workflow
+
+Decision tree for common Vagrant operations:
+
+```mermaid
+flowchart TD
+    A[Start] --> B{Vagrantfile exists?}
+    B -->|No| C[vagrant init]
+    C --> D[Edit Vagrantfile]
+    B -->|Yes| E{VM exists?}
+
+    E -->|No| F[vagrant up]
+    E -->|Yes| G{VM running?}
+
+    G -->|No| H[vagrant up / resume]
+    G -->|Yes| I[vagrant ssh]
+
+    F --> I
+    H --> I
+
+    I --> J[Work in VM]
+    J --> K{Need config change?}
+
+    K -->|Yes| L[Edit Vagrantfile]
+    L --> M[vagrant reload]
+    M --> I
+
+    K -->|No| N{Done for now?}
+
+    N -->|Pause work| O[vagrant suspend]
+    N -->|End session| P[vagrant halt]
+    N -->|Delete everything| Q[vagrant destroy]
+
+    O --> R[Fast resume later]
+    P --> S[Clean shutdown]
+    Q --> T[Start fresh]
+
+    T --> F
+```
 
 #### Vagrant Features
 
